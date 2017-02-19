@@ -1,0 +1,2 @@
+id,title,ticker,url,data_url
+1,TEST,TST,http://www.test.com, http://www.test.com/testdata.csv
