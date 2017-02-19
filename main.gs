@@ -9,19 +9,108 @@
 //  omit 'var' for final values (that won't chang
 // ============================================
 
-// ============================================
-// DATABASE URLs (SPREADSHEETS)
-// ============================================
-SPREADSHEET_URL = "https://docs.google.com/spreadsheets/<fill_your_spreadsheet_url>";
+// SPREADSHEET URL is defined in Def.gs (which is not included in this file)
 
 // SHEETS
 SHEET_WATCH_LIST ='watch_list';
+SHEET_LOG_ERROR  ='log_error';
 
 // EXCEL COLUMN INDEX 
-COL_ID     = 1
-COL_TITLE  = 2;
-COL_TICKER = 3;
-COL_DATA   = 4;
+COL_ID       = 1
+COL_TITLE    = 2;
+COL_TICKER   = 3;
+COL_URL      = 4;
+COL_DATA_URL = 5;
+
+function retrieve() {
+  // Get a script lock to modify a shared resource.
+  var lock = LockService.getScriptLock();
+
+  // Wait for up to 30 seconds for other processes to finish.
+  lock.waitLock(30000);
+  {
+    var doc = SpreadsheetApp.openByUrl(SPREADSHEET_URL);
+    var sht_watch_list = doc.getSheetByName(SHEET_WATCH_LIST);
+    var jsn_watch_list = JSON.parse(getSpreadsheetByJson(sht_watch_list));  
+
+    for(var i = 0; i < jsn_watch_list.length; i++) {
+      try {
+        var watch_list = jsn_watch_list[i];
+        
+        
+        var id = watch_list.id;
+        var title = watch_list.title;
+        var ticker = watch_list.ticker;
+        var url = watch_list.url;
+        var data_url = watch_list.data_url;
+        var content = fetch(data_url);
+
+        Logger.log(id + ": " + title + "(" + ticker + ")[" + url + "][" + data_url + "]");
+        // Logger.log(content);
+
+        var sht_ticker = doc.getSheetByName(ticker);
+
+        // insert to the data sheet
+        var last_row_index = sht_ticker.getLastRow();
+        var format_date = getFormatDate();
+        var row_content = [format_date, content];
+        sht_ticker.appendRow(row_content);
+        
+      } catch (e) {
+        // give up unknown items
+        errorLog(e);
+      }
+    }
+    // Release the lock so that other processes can continue.
+    lock.releaseLock();
+  }
+}
+
+
+function fetch(url) {
+  // send get
+  var response = UrlFetchApp.fetch(url);
+
+  // retrieve the get result
+  var content = response.getContentText("UTF-8");   
+
+  return content;
+}
+
+function getFormatDate() {
+  var curr  = new Date()
+  var format_date = curr.getYear() + "/" + (curr.getMonth() + 1) + "/" + curr.getDate(); 
+  format_date = format_date + " - " + curr.getHours()+ ":" + curr.getMinutes() + ":" + curr.getSeconds();
+  return format_date;
+}
+//=============================================================
+// LOGGING AND DEBUGGING
+//=============================================================
+// write an error message to the sheet 'error.log'
+function errorLog(message) {
+  
+  var doc = SpreadsheetApp.openByUrl(SPREADSHEET_URL);
+  var sht_error = doc.getSheetByName(SHEET_LOG_ERROR);
+  var format_date = getFormatDate();
+  var error_log = "";
+  
+  // check if the 'message' parameter is an exception object and has a stack trace in it
+  if (message.message) {
+    error_log += error_message.message + "\n";
+  }
+  
+  if (message.stack) {
+    error_log += error_message.stack + "\n";
+  }
+  
+  error_log += message;
+  Logger.log("ERROR: " + error_log);
+  
+  // insert to the error sheet
+  var last_row_index = sht_error.getLastRow();
+  var row_content = [last_row_index, format_date, error_log];
+  sht_error.appendRow(row_content);
+}
 
 //=====================================
 // JSON extract helper methods
@@ -68,86 +157,4 @@ function getSpreadsheetByJson(sheet) {
   });
 
   return JSON.stringify(data_list);
-}
-
-function retrieve() {
-  // Get a script lock to modify a shared resource.
-  var lock = LockService.getScriptLock();
-
-  // Wait for up to 30 seconds for other processes to finish.
-  lock.waitLock(30000);
-  {
-    var doc = SpreadsheetApp.openByUrl(SPREADSHEET_URL);
-    
-    var sht_watch_list = doc.getSheetByName(SHEET_WATCH_LIST);
-    var jsn_watch_list = JSON.parse(getSpreadsheetByJson(sht_watch_list));  
-    
-    for(var i = 0; i < jsn_watch_list.length; i++) {
-      try {
-        
-        var watch_list = jsn_watch_list[i];
-        
-        
-        var id = getFullUri(watch_list.id);
-        var title = getFullUri(watch_list.title);
-        var ticker = getFullUri(watch_list.ticker);
-        var url = getFullUri(watch_list.url);
-
-        var content = fetch(url);
-
-        Logger.log(id + ": " + title + "(" + ticker + ")[" + url + "]");
-        Logger.log(content);
-        
-      } catch (e) {
-        // give up unknown items
-        errorLog(e);
-      }
-  }
-  // Release the lock so that other processes can continue.
-  lock.releaseLock();
-
-}
-
-
-function fetch(url) {
-  // send get
-  var response = UrlFetchApp.fetch(url);
-
-  // retrieve the get result
-  var content = response.getContentText("UTF-8");   
-
-  return content;
-}
-  
-//=============================================================
-// LOGGING AND DEBUGGING
-//=============================================================
-// write an error message to the sheet 'error.log'
-function errorLog(error_message) {
-  
-//   var doc = SpreadsheetApp.openByUrl(SPREADSHEET_URL);
-//   var sheet_error = doc.getSheetByName(SHEET_NAME_ERRORLOG);
-  
-//   var curr  = new Date()
-//   var format_date = curr.getYear() + "/" + (curr.getMonth() + 1) + "/" + curr.getDate(); 
-//   format_date = format_date + " - " + curr.getHours()+ ":" + curr.getMinutes() + ":" + curr.getSeconds();
-  
-//   var real_message = "BOT No." + BOT_NUM + "\n";
-  
-//   // check if this is an exception object and has a stack or a message
-//   if (error_message.message) {
-//     real_message += error_message.message + "\n";
-//   }
-
-//   if (error_message.stack) {
-//     real_message += error_message.stack + "\n";
-//   }
-
-//   real_message += error_message;
-  Logger.log("ERROR: " + real_message);
-
-  // insert to the error sheet
-//   var last_row_index = sheet_error.getLastRow();
-//   var row_content = [last_row_index, format_date, real_message];
-//   insertAtLastSortDesc(sheet_error, row_content, 1, false);
 }
